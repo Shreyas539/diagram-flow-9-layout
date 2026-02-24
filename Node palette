@@ -1,0 +1,156 @@
+To achieve a professional NMS "toolbox" feel, we’ll create a vertical stack of nodes that sits anchored to the left side of your canvas. We will use **Tailwind's absolute positioning** to ensure it floats correctly over your Lime Green area without interfering with the map controls.
+
+### 1. Create the Vertical Node Palette
+
+We'll style this to look like a high-end engineering tool.
+
+```jsx
+// src/features/topology/NodePalette.jsx
+import React from 'react';
+import { Router, Server, HardDrive, Cpu } from 'lucide-react';
+
+const NodePalette = () => {
+  const onDragStart = (event, nodeType) => {
+    // Set the data we want to transfer
+    event.dataTransfer.setData('application/reactflow', nodeType);
+    event.dataTransfer.effectAllowed = 'move';
+  };
+
+  const nodeLibrary = [
+    { type: 'router', label: 'Router', icon: <Router size={20} /> },
+    { type: 'switch', label: 'Switch', icon: <HardDrive size={20} /> },
+    { type: 'server', label: 'Server', icon: <Server size={20} /> },
+    { type: 'sensor', label: 'Sensor', icon: <Cpu size={20} /> },
+  ];
+
+  return (
+    <div className="absolute left-4 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-3 p-3 bg-white/90 backdrop-blur-sm rounded-xl border border-slate-200 shadow-2xl">
+      <div className="text-[9px] font-black text-slate-400 uppercase tracking-tighter text-center mb-1">
+        Tools
+      </div>
+      
+      {nodeLibrary.map((node) => (
+        <div
+          key={node.type}
+          onDragStart={(event) => onDragStart(event, node.type)}
+          draggable
+          className="group relative"
+        >
+          <div className="w-12 h-12 flex items-center justify-center bg-white border-2 border-slate-100 rounded-lg cursor-grab hover:border-blue-500 hover:text-blue-600 transition-all shadow-sm active:scale-95 active:cursor-grabbing">
+            {node.icon}
+          </div>
+          
+          {/* Tooltip on Hover */}
+          <div className="absolute left-14 top-1/2 -translate-y-1/2 px-2 py-1 bg-slate-900 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity">
+            {node.label}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+export default NodePalette;
+
+```
+
+---
+
+### 2. Integrate with `TopologyCanvas.jsx`
+
+The key to making this work is using the `ReactFlowProvider` and the `useReactFlow` hook to handle the coordinate transformation so that the node drops exactly where your mouse is.
+
+```jsx
+import React, { useCallback } from 'react';
+import ReactFlow, { 
+  useNodesState, 
+  useEdgesState, 
+  addEdge, 
+  ReactFlowProvider, 
+  useReactFlow,
+  Background,
+  Controls
+} from 'reactflow';
+import 'reactflow/dist/style.css';
+import NodePalette from './NodePalette';
+
+const TopologyCanvas = () => {
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const { screenToFlowPosition } = useReactFlow();
+
+  const onConnect = useCallback((params) => setEdges((eds) => addEdge(params, eds)), []);
+
+  const onDragOver = useCallback((event) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const onDrop = useCallback(
+    (event) => {
+      event.preventDefault();
+
+      const type = event.dataTransfer.getData('application/reactflow');
+      if (!type) return;
+
+      // This converts mouse pixels to React Flow coordinates
+      const position = screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+
+      const newNode = {
+        id: `node_${Date.now()}`,
+        type: 'default', // You can create custom node types later
+        position,
+        data: { label: `${type.toUpperCase()}` },
+      };
+
+      setNodes((nds) => nds.concat(newNode));
+    },
+    [screenToFlowPosition, setNodes]
+  );
+
+  return (
+    <div className="w-full h-full relative overflow-hidden">
+      {/* The Vertical Palette */}
+      <NodePalette />
+
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        onDrop={onDrop}
+        onDragOver={onDragOver}
+        fitView
+      >
+        <Background color="#cbd5e1" gap={20} variant="dots" />
+        <Controls position="bottom-right" />
+      </ReactFlow>
+    </div>
+  );
+};
+
+export default () => (
+  <ReactFlowProvider>
+    <TopologyCanvas />
+  </ReactFlowProvider>
+);
+
+```
+
+---
+
+### Implementation Details:
+
+* **Vertical Stack:** The palette uses `flex-col` and is centered vertically using `top-1/2 -translate-y-1/2`.
+* **Coordinate Sync:** We use `screenToFlowPosition`. Without this, if you zoom into the map and drop a node, it will appear in the wrong place. This function handles the math for you.
+* **Visual Feedback:** I added a small active scale effect (`active:scale-95`) and a tooltip so the user knows exactly what they are grabbing.
+
+### Scalability Tip:
+
+If you start getting many node types, you can wrap the palette in a `max-h-[60vh] overflow-y-auto` div. This will prevent it from overlapping your headers or bottom drawer on smaller screens.
+
+**Would you like me to help you create "Custom Node Components" so that instead of a generic box, the dropped node looks like an actual SVG icon of a Router or Server?**
